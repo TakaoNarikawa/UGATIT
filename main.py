@@ -25,6 +25,8 @@ def parse_args():
     parser.add_argument('--cycle_weight', type=int, default=10, help='Weight about Cycle')
     parser.add_argument('--identity_weight', type=int, default=10, help='Weight about Identity')
     parser.add_argument('--cam_weight', type=int, default=1000, help='Weight about CAM')
+    parser.add_argument('--face_distance_weight', type=int, default=1000, help='Weight about Face Distance')
+    
     parser.add_argument('--gan_type', type=str, default='lsgan', help='[gan / lsgan / wgan-gp / wgan-lp / dragan / hinge]')
 
     parser.add_argument('--smoothing', type=str2bool, default=True, help='AdaLIN smoothing effect')
@@ -47,6 +49,9 @@ def parse_args():
                         help='Directory name to save training logs')
     parser.add_argument('--sample_dir', type=str, default='samples',
                         help='Directory name to save the samples on training')
+    parser.add_argument('--facenet_checkpoint_dir', type=str, default=None,
+                        help='facenetのcheckpointディレクトリ')
+    
 
     return check_args(parser.parse_args())
 

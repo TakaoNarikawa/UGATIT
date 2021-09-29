@@ -4,6 +4,7 @@ from glob import glob
 import time
 from tensorflow.contrib.data import prefetch_to_device, shuffle_and_repeat, map_and_batch
 import numpy as np
+import facenet
 
 class UGATIT(object) :
     def __init__(self, sess, args):
@@ -41,6 +42,8 @@ class UGATIT(object) :
         self.cycle_weight = args.cycle_weight
         self.identity_weight = args.identity_weight
         self.cam_weight = args.cam_weight
+        self.face_distance_weight = args.face_distance_weight
+
         self.ld = args.GP_ld
         self.smoothing = args.smoothing
 
@@ -54,6 +57,8 @@ class UGATIT(object) :
 
         self.img_size = args.img_size
         self.img_ch = args.img_ch
+
+        self.facenet_checkpoint = args.facenet_checkpoint_dir
 
 
         self.sample_dir = os.path.join(args.sample_dir, self.model_dir)
@@ -95,6 +100,7 @@ class UGATIT(object) :
         print("# cycle_weight : ", self.cycle_weight)
         print("# identity_weight : ", self.identity_weight)
         print("# cam_weight : ", self.cam_weight)
+        print("# face_distance_weight : ", self.face_distance_weight)
 
     ##################################################################################
     # Generator
@@ -272,6 +278,36 @@ class UGATIT(object) :
             return x, cam_logit, heatmap
 
     ##################################################################################
+    # Facenet
+    ##################################################################################
+
+    def face_distance(self, a, b, ab, ba):
+        if self.facenet_checkpoint is None:
+            return None
+
+        image_batch = tf.concat([b, a, ba, ab], 0)
+        image_batch = tf.image.resize(image_batch, [160, 160]) # 160x160で学習されている
+        # phase_train_placeholder = tf.placeholder(tf.bool, name='phase_train')
+        phase_train_placeholder = tf.constant(False, name='phase_train')
+        input_map = {
+            'image_batch': image_batch, 
+            # 'label_batch': label_batch, 
+            'phase_train': phase_train_placeholder
+        }
+        facenet.load_model(self.facenet_checkpoint, input_map=input_map)
+
+        # (4, 512)
+        embeddings = tf.get_default_graph().get_tensor_by_name("embeddings:0")
+
+        b_a   = tf.slice(embeddings, [0, 0], [2, -1]) # (b,  a)
+        ba_ab = tf.slice(embeddings, [2, 0], [2, -1]) # (ba, ab)
+
+        # (2,)
+        distance = tf.math.reduce_sum(tf.math.square(tf.subtract(b_a, ba_ab)), axis=1)
+        dist_A, dist_B = distance[0], distance[1]
+        return dist_A, dist_B
+
+    ##################################################################################
     # Model
     ##################################################################################
 
@@ -339,6 +375,8 @@ class UGATIT(object) :
 
         return sum(GP), sum(cam_GP)
 
+
+
     def build_model(self):
         if self.phase == 'train' :
             self.lr = tf.placeholder(tf.float32, name='learning_rate')
@@ -399,20 +437,27 @@ class UGATIT(object) :
             cam_A = cam_loss(source=cam_ba, non_source=cam_aa)
             cam_B = cam_loss(source=cam_ab, non_source=cam_bb)
 
+            # 追加 (A, AB), (B, BA) の顔一致度 
+            # face_distance_A = self.face_distance(self.domain_B, x_ba)
+            # face_distance_B = self.face_distance(self.domain_A, x_ab)
+            face_distance_A, face_distance_B = self.face_distance(self.domain_A, self.domain_B, x_ab, x_ba)
+
             Generator_A_gan = self.adv_weight * G_ad_loss_A
             Generator_A_cycle = self.cycle_weight * reconstruction_B
             Generator_A_identity = self.identity_weight * identity_A
             Generator_A_cam = self.cam_weight * cam_A
+            Generator_A_face_distance = self.face_distance_weight * face_distance_A
 
 
             Generator_B_gan = self.adv_weight * G_ad_loss_B
             Generator_B_cycle = self.cycle_weight * reconstruction_A
             Generator_B_identity = self.identity_weight * identity_B
             Generator_B_cam = self.cam_weight * cam_B
+            Generator_B_face_distance = self.face_distance_weight * face_distance_B
 
 
-            Generator_A_loss = Generator_A_gan + Generator_A_cycle + Generator_A_identity + Generator_A_cam
-            Generator_B_loss = Generator_B_gan + Generator_B_cycle + Generator_B_identity + Generator_B_cam
+            Generator_A_loss = Generator_A_gan + Generator_A_cycle + Generator_A_identity + Generator_A_cam + Generator_A_face_distance
+            Generator_B_loss = Generator_B_gan + Generator_B_cycle + Generator_B_identity + Generator_B_cam + Generator_B_face_distance
 
 
             Discriminator_A_loss = self.adv_weight * D_ad_loss_A
@@ -448,12 +493,14 @@ class UGATIT(object) :
             self.G_A_cycle = tf.summary.scalar("G_A_cycle", Generator_A_cycle)
             self.G_A_identity = tf.summary.scalar("G_A_identity", Generator_A_identity)
             self.G_A_cam = tf.summary.scalar("G_A_cam", Generator_A_cam)
+            self.G_A_face_distance = tf.summary.scalar("G_A_face_distance", Generator_A_face_distance)
 
             self.G_B_loss = tf.summary.scalar("G_B_loss", Generator_B_loss)
             self.G_B_gan = tf.summary.scalar("G_B_gan", Generator_B_gan)
             self.G_B_cycle = tf.summary.scalar("G_B_cycle", Generator_B_cycle)
             self.G_B_identity = tf.summary.scalar("G_B_identity", Generator_B_identity)
             self.G_B_cam = tf.summary.scalar("G_B_cam", Generator_B_cam)
+            self.G_B_face_distance = tf.summary.scalar("G_B_face_distance", Generator_B_face_distance)
 
             self.D_A_loss = tf.summary.scalar("D_A_loss", Discriminator_A_loss)
             self.D_B_loss = tf.summary.scalar("D_B_loss", Discriminator_B_loss)
@@ -466,8 +513,8 @@ class UGATIT(object) :
                     self.rho_var.append(tf.summary.scalar(var.name + "_max", tf.reduce_max(var)))
                     self.rho_var.append(tf.summary.scalar(var.name + "_mean", tf.reduce_mean(var)))
 
-            g_summary_list = [self.G_A_loss, self.G_A_gan, self.G_A_cycle, self.G_A_identity, self.G_A_cam,
-                              self.G_B_loss, self.G_B_gan, self.G_B_cycle, self.G_B_identity, self.G_B_cam,
+            g_summary_list = [self.G_A_loss, self.G_A_gan, self.G_A_cycle, self.G_A_identity, self.G_A_cam, self.G_A_face_distance,
+                              self.G_B_loss, self.G_B_gan, self.G_B_cycle, self.G_B_identity, self.G_B_cam, self.G_B_face_distance,
                               self.all_G_loss]
 
             g_summary_list.extend(self.rho_var)
@@ -532,10 +579,10 @@ class UGATIT(object) :
                 # Update G
                 g_loss = None
                 if (counter - 1) % self.n_critic == 0 :
-                    batch_A_images, batch_B_images, fake_A, fake_B, _, g_loss, summary_str = self.sess.run([self.real_A, self.real_B,
-                                                                                                            self.fake_A, self.fake_B,
-                                                                                                            self.G_optim,
-                                                                                                            self.Generator_loss, self.G_loss], feed_dict = train_feed_dict)
+                    batch_A_images, batch_B_images, fake_A, fake_B, _, g_loss, summary_str = \
+                        self.sess.run([self.real_A, self.real_B, self.fake_A, self.fake_B,
+                                       self.G_optim, self.Generator_loss, self.G_loss], 
+                                       feed_dict = train_feed_dict)
                     self.writer.add_summary(summary_str, counter)
                     past_g_loss = g_loss
 

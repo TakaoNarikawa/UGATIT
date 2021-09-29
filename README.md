@@ -1,4 +1,4 @@
-# U-GAT-IT &mdash; with Face Recognition Loss
+# U-GAT-IT &mdash; with Face Distance Loss
 
 ## Fork メモ
 

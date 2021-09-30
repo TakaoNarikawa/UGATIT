@@ -43,6 +43,7 @@ class UGATIT(object) :
         self.identity_weight = args.identity_weight
         self.cam_weight = args.cam_weight
         self.face_distance_weight = args.face_distance_weight
+        self.pair_weight = args.pair_weight
 
         self.ld = args.GP_ld
         self.smoothing = args.smoothing
@@ -101,6 +102,7 @@ class UGATIT(object) :
         print("# identity_weight : ", self.identity_weight)
         print("# cam_weight : ", self.cam_weight)
         print("# face_distance_weight : ", self.face_distance_weight)
+        print("# pair_weight : ", self.pair_weight)
 
     ##################################################################################
     # Generator
@@ -390,8 +392,8 @@ class UGATIT(object) :
 
 
             gpu_device = '/gpu:0'
-            trainA = trainA.apply(shuffle_and_repeat(self.dataset_num)).apply(map_and_batch(Image_Data_Class.image_processing, self.batch_size, num_parallel_batches=16, drop_remainder=True)).apply(prefetch_to_device(gpu_device, None))
-            trainB = trainB.apply(shuffle_and_repeat(self.dataset_num)).apply(map_and_batch(Image_Data_Class.image_processing, self.batch_size, num_parallel_batches=16, drop_remainder=True)).apply(prefetch_to_device(gpu_device, None))
+            trainA = trainA.apply(shuffle_and_repeat(self.dataset_num, seed=1234)).apply(map_and_batch(Image_Data_Class.image_processing, self.batch_size, num_parallel_batches=16, drop_remainder=True)).apply(prefetch_to_device(gpu_device, None))
+            trainB = trainB.apply(shuffle_and_repeat(self.dataset_num, seed=1234)).apply(map_and_batch(Image_Data_Class.image_processing, self.batch_size, num_parallel_batches=16, drop_remainder=True)).apply(prefetch_to_device(gpu_device, None))
 
 
             trainA_iterator = trainA.make_one_shot_iterator()
@@ -442,11 +444,16 @@ class UGATIT(object) :
             # face_distance_B = self.face_distance(self.domain_A, x_ab)
             face_distance_A, face_distance_B = self.face_distance(self.domain_A, self.domain_B, x_ab, x_ba)
 
+            # 追加 (A, BA), (B, AB) の一致度
+            pair_A = L1_loss(self.domain_A, x_ba)
+            pair_B = L1_loss(self.domain_B, x_ab)
+
             Generator_A_gan = self.adv_weight * G_ad_loss_A
             Generator_A_cycle = self.cycle_weight * reconstruction_B
             Generator_A_identity = self.identity_weight * identity_A
             Generator_A_cam = self.cam_weight * cam_A
             Generator_A_face_distance = face_distance_A and self.face_distance_weight * face_distance_A
+            Generator_A_pair = self.pair_weight * pair_A
 
 
             Generator_B_gan = self.adv_weight * G_ad_loss_B
@@ -454,10 +461,11 @@ class UGATIT(object) :
             Generator_B_identity = self.identity_weight * identity_B
             Generator_B_cam = self.cam_weight * cam_B
             Generator_B_face_distance = face_distance_B and self.face_distance_weight * face_distance_B
+            Generator_B_pair = self.pair_weight * pair_B
 
 
-            Generator_A_loss = Generator_A_gan + Generator_A_cycle + Generator_A_identity + Generator_A_cam
-            Generator_B_loss = Generator_B_gan + Generator_B_cycle + Generator_B_identity + Generator_B_cam
+            Generator_A_loss = Generator_A_gan + Generator_A_cycle + Generator_A_identity + Generator_A_cam + Generator_A_pair
+            Generator_B_loss = Generator_B_gan + Generator_B_cycle + Generator_B_identity + Generator_B_cam + Generator_B_pair
 
             if Generator_A_face_distance and Generator_B_face_distance:
                 Generator_A_loss += Generator_A_face_distance

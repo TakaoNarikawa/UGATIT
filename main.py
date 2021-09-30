@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument('--identity_weight', type=int, default=10, help='Weight about Identity')
     parser.add_argument('--cam_weight', type=int, default=1000, help='Weight about CAM')
     parser.add_argument('--face_distance_weight', type=int, default=1000, help='Weight about Face Distance')
+    parser.add_argument('--pair_weight', type=int, default=0, help='Weight about Pair Loss')
     
     parser.add_argument('--gan_type', type=str, default='lsgan', help='[gan / lsgan / wgan-gp / wgan-lp / dragan / hinge]')
 

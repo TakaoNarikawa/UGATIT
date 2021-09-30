@@ -17,6 +17,8 @@ UGATIT の Generator ロスは次の 5 つ
 
 - Face distance loss
   - A->B, B->A の前後の FaceRecognition モデルの一致度をロスとして利用する、FaceRecognition モデルは `trainable=False` とする
+- Pair loss
+  - (A, B->A), (B, A->B) の L1 ロスを利用
 
 ## 使い方
 

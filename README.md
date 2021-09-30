@@ -5,7 +5,7 @@
 UGATIT の Generator ロスは次の 5 つ
 
 - Adversarial loss
-  - s An adversarial loss is employed to match the distribution of the translated images to the target image distribution
+  - An adversarial loss is employed to match the distribution of the translated images to the target image distribution
 - Cycle loss (Reconstruction loss)
   - To alleviate the mode collapse problem, we apply a cycle consistency constraint to the generator
 - Identity loss

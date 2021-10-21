@@ -285,7 +285,7 @@ class UGATIT(object) :
 
     def face_distance(self, a, b, ab, ba):
         if self.facenet_checkpoint is None:
-            return None, None
+            return tf.constant(0), tf.constant(0)
 
         image_batch = tf.concat([b, a, ba, ab], 0)
         image_batch = tf.image.resize(image_batch, [160, 160]) # 160x160で学習されている
@@ -452,7 +452,7 @@ class UGATIT(object) :
             Generator_A_cycle = self.cycle_weight * reconstruction_B
             Generator_A_identity = self.identity_weight * identity_A
             Generator_A_cam = self.cam_weight * cam_A
-            Generator_A_face_distance = face_distance_A and self.face_distance_weight * face_distance_A
+            Generator_A_face_distance = self.face_distance_weight * face_distance_A
             Generator_A_pair = self.pair_weight * pair_A
 
 
@@ -460,16 +460,15 @@ class UGATIT(object) :
             Generator_B_cycle = self.cycle_weight * reconstruction_A
             Generator_B_identity = self.identity_weight * identity_B
             Generator_B_cam = self.cam_weight * cam_B
-            Generator_B_face_distance = face_distance_B and self.face_distance_weight * face_distance_B
+            Generator_B_face_distance = self.face_distance_weight * face_distance_B
             Generator_B_pair = self.pair_weight * pair_B
 
 
             Generator_A_loss = Generator_A_gan + Generator_A_cycle + Generator_A_identity + Generator_A_cam + Generator_A_pair
             Generator_B_loss = Generator_B_gan + Generator_B_cycle + Generator_B_identity + Generator_B_cam + Generator_B_pair
 
-            if Generator_A_face_distance and Generator_B_face_distance:
-                Generator_A_loss += Generator_A_face_distance
-                Generator_B_loss += Generator_B_face_distance
+            Generator_A_loss += Generator_A_face_distance
+            Generator_B_loss += Generator_B_face_distance
 
 
             Discriminator_A_loss = self.adv_weight * D_ad_loss_A
@@ -512,9 +511,8 @@ class UGATIT(object) :
             self.G_B_identity = tf.summary.scalar("G_B_identity", Generator_B_identity)
             self.G_B_cam = tf.summary.scalar("G_B_cam", Generator_B_cam)
 
-            if Generator_A_face_distance and Generator_B_face_distance:
-                self.G_A_face_distance = tf.summary.scalar("G_A_face_distance", Generator_A_face_distance)
-                self.G_B_face_distance = tf.summary.scalar("G_B_face_distance", Generator_B_face_distance)
+            self.G_A_face_distance = tf.summary.scalar("G_A_face_distance", Generator_A_face_distance)
+            self.G_B_face_distance = tf.summary.scalar("G_B_face_distance", Generator_B_face_distance)
 
             self.D_A_loss = tf.summary.scalar("D_A_loss", Discriminator_A_loss)
             self.D_B_loss = tf.summary.scalar("D_B_loss", Discriminator_B_loss)
@@ -531,9 +529,8 @@ class UGATIT(object) :
                               self.G_B_loss, self.G_B_gan, self.G_B_cycle, self.G_B_identity, self.G_B_cam,
                               self.all_G_loss]
 
-            if Generator_A_face_distance and Generator_B_face_distance:
-                g_summary_list.append(self.G_A_face_distance)
-                g_summary_list.append(self.G_B_face_distance)
+            g_summary_list.append(self.G_A_face_distance)
+            g_summary_list.append(self.G_B_face_distance)
 
             g_summary_list.extend(self.rho_var)
             d_summary_list = [self.D_A_loss, self.D_B_loss, self.all_D_loss]
